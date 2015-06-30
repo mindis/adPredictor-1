@@ -9,3 +9,7 @@ The very bare bones of the adPredictor algorithm in python.
 
 The input data in a simple case comes from a csv.
 Ideal enhancment is from libSVM data format.
+
+
+
+WARNING: Very much a work in progress
