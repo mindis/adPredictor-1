@@ -1,16 +1,18 @@
 __author__ = 'michaelpearmain'
 
-from datetime import datetime
-from csv import DictReader
-from math import exp, log, sqrt, erfc, pi
+import utils
 import gzip
-from sys import stderr
 import random
 import argparse
 import json
 import pickle
-from collections import defaultdict
+import logging
 
+from collections import defaultdict
+from sys import stderr
+from datetime import datetime
+from csv import DictReader
+from math import exp, log, sqrt, erfc, pi
 ##############################################################################
 # class, function, generator definitions #####################################
 ##############################################################################
@@ -32,7 +34,7 @@ class base_learner(object):
             return None
 
     @classmethod
-    def from_params(cls, learner_type, args):
+    def from_params(cls, args):
         # choose a learner from args
 
         stderr.write("Creating from:\n")
@@ -40,35 +42,20 @@ class base_learner(object):
             stderr.write("%s\t=> %s\n" % (v, str(args[v])))
 
         D = 2**args["bits"]
-        dayfeaturep = not args["nodayfeature"]
-        counters = args["device_counters"]
-        if args["daily_device_counters"]:
-            counters = "daily"
-
         args["D"] = D
-        args["device_counters"] = counters
-        args["dayfeature"] = dayfeaturep
 
-
-        if learner_type == "ftrl_group":
-            learner = ftrl_proximal_group.from_params(args["group_fn"], args)
-        elif learner_type == "adpredictor":
-            learner = adpredictor.from_params(args)
-        else:
-            stderr.write("Unknown learner type %s\n" % learner_type)
-            learner = None
+        learner = adpredictor.from_params(args)
 
         return learner
 
 
 class hash_learner(base_learner):
-# base class for learners
+    # base class for learners
 
-    def __init__(self, D, interactions = False, hash = feature_hash):
+    def __init__(self, D, hash = utils.feature_hash):
 
         base_learner.__init__(self)
         self.D = D
-        self.interactions = interactions
         self.hash = feature_hash
 
     @classmethod
@@ -82,16 +69,6 @@ class hash_learner(base_learner):
 
         l = [hash("%s=%s" % (i,x[i]), D) for i in x]
         l.append(0)
-
-        if self.interactions:
-            k = x.keys()
-            v = x.values()
-            L = len(k)
-            for i in xrange(0, L-1):
-#                l.extend([hash("%s=%s+%s=%s" % (k[i], v[i], k[j], v[j]), D)
-                l.extend([hash(k[i] + "=" + v[i] + "+" + k[j] + "=" + v[j], D)
-                          for j in xrange(i+1, L)])
-
         return l
 
 
@@ -121,241 +98,11 @@ class hash_learner(base_learner):
         for (f,h) in self._explain_ind(x):
             explanation.update(i, f, h, not_ignored)
 
-def app_or_site_select_fn(x):
-    if x["site_id"] == "85f751fd": # null value
-        del x["site_id"]
-        del x["site_domain"]
-        del x["site_category"]
-        # select learner 0 for "app" x
-        return [(0,x)]
-    else:
-        del x["app_id"]
-        del x["app_domain"]
-        del x["app_category"]
-        # select learner 1 for "site" x
-        return [(1,x)]
-
-def app_or_site_2_select_fn(x):
-    if x["site_id"] == "85f751fd": # null value
-        del x["site_id"]
-        # select learner 0 for "app" x
-        return [(0,x)]
-    else:
-        del x["app_id"]
-        # select learner 1 for "site" x
-        return [(1,x)]
-
-
-def app_or_site_3_select_fn(x):
-    if x["site_id"] == "85f751fd": # null value
-        del x["site_id"]
-        del x["site_domain"]
-        del x["site_category"]
-        x["type"] = "a"
-        # select learner 0 for "app" x
-        return [(0,x)]
-    else:
-        del x["app_id"]
-        del x["app_domain"]
-        del x["app_category"]
-        x["type"] = "s"
-        # select learner 1 for "site" x
-        return [(1,x)]
-
-def remove_null(x):
-    if x["site_id"] == "85f751fd": # null value
-        del x["site_id"]
-        del x["site_domain"]
-        del x["site_category"]
-    else:
-        del x["app_id"]
-        del x["app_domain"]
-        del x["app_category"]
-    return [(0,x)]
-
-sites = ["site_id", "site_domain", "site_category"]
-apps = ["app_id", "app_domain", "app_category"]
-
-def app_site3(x):
-    if x["site_id"] == "85f751fd": # null value
-        x2 = {"hour": x["hour"],
-              "app_id": x["app_id"],
-              "app_domain": x["app_domain"],
-              "app_category": x["app_category"]}
-        del x["site_id"]
-        del x["site_domain"]
-        del x["site_category"]
-        del x["app_id"]
-        del x["app_domain"]
-        del x["app_category"]
-        x["type"] = "app"
-        # select learner 0 for "app" x
-        return [(0,x), (1, x2)]
-    else:
-        x2 = {"hour": x["hour"],
-              "site_id": x["site_id"],
-              "site_domain": x["site_domain"],
-              "site_category": x["site_category"]}
-        del x["site_id"]
-        del x["site_domain"]
-        del x["site_category"]
-        del x["app_id"]
-        del x["app_domain"]
-        del x["app_category"]
-        x["type"] = "site"
-        # select learner 1 for "site" x
-        return [(0,x), (2, x2)]
-
-def remove_device_site_app(x):
-
-    if x["site_id"] == "85f751fd": # null value
-        x["type"] = "s"
-    else:
-        x["type"] = "a"
-    del x["app_id"]
-    del x["app_domain"]
-    del x["app_category"]
-    del x["site_id"]
-    del x["site_domain"]
-    del x["site_category"]
-    del x["device_ip"]
-    del x["device_id"]
-
-    return [(0,x)]
-
-def remove_device(x):
-
-    del x["device_ip"]
-    del x["device_id"]
-
-    return [(0,x)]
-
-
-ftrl_proximal_group_fns = {
-    "one": (1, lambda x: [(0,x)]),
-    "app_or_site": (2, app_or_site_select_fn),
-    "app_or_site_2": (2, app_or_site_2_select_fn),
-    "app_or_site_3": (2, app_or_site_3_select_fn),
-    "remove_null": (1, remove_null),
-    "app_site3": (3, app_site3),
-    "prune": (1, remove_device_site_app),
-    "remove_device": (1, remove_device)
-}
-
-
-class ftrl_proximal_group(base_learner):
-
-    def __init__(self, select_fn_name, n, select_fn, ftrls, args):
-
-        base_learner.__init__(self)
-        self.args = args
-        self.select_fn_name = select_fn_name
-        (self.n, self.select_fn) = (n, select_fn)
-        self.ftrls = ftrls
-
-    @classmethod
-    def from_params(cls, select_fn_name, args):
-        (n, select_fn) = ftrl_proximal_group_fns[select_fn_name]
-        ftrls = [ftrl_proximal.from_params(args)
-                 for i in xrange(n)]
-        if args["verbose"] > 1:
-            stderr.write("Forming new group learner with group fn %s\n" % select_fn_name)
-        return cls(select_fn_name, n, select_fn, ftrls, args)
-
-    @classmethod
-    def from_file(cls, f, format = None):
-        if format == None:
-            format = f.readline()[:-1]
-        if format == "json_w_group_v1":
-            (n, select_fn_name, args, ws) = json.load(f)
-            args = ascii_encode_dict(args)
-            select_fn_name = ascii_encode(select_fn_name)
-            ftrls = [ftrl_proximal.from_params(args, w) for w in ws]
-            (nn, fn) = ftrl_proximal_group_fns[select_fn_name]
-            if n != nn:
-                stderr.write("Warning: read %d learners when should be %d for %s selection fn.\n" % (
-                             n, nn, select_fn_name))
-            g = cls(select_fn_name, n, fn, ftrls, args)
-            stderr.write("Loaded group of type %s with %d sub-learners\n" % (
-                         g.select_fn_name, g.n))
-        else:
-            stderr.write("Unknown format %s.\n" % format)
-            g = None
-        return g
-
-    def write_to_file(self, f, format = "json_w_group_v1"):
-        if format == "json_w_group_v1":
-            stderr.write("Writing in format %s to file %s..." % (format, str(f)))
-            f.write(format + "\n")
-            json.dump((self.n,
-                       self.select_fn_name,
-                       self.args,
-                       [m.w for m in self.ftrls]), f)
-            stderr.write("...done\n")
-        else:
-            stderr.write("Unknown format %s.\n" % format)
-
-    def weight_list(self):
-        return [m.w for m in self.ftrls]
-
-    def _indices(self, x):
-
-        ix_list = self.select_fn(x)
-
-        return [(self.ftrls[i],
-                 new_x,
-                 self.ftrls[i]._indices(new_x))
-                 for (i, new_x) in ix_list]
-
-    def predict(self, x, indices = None):
-        fi_list = self._indices(x) if indices == None else indices
-
-        r = [ftrl.predict(new_x, indices = ind) for (ftrl, new_x, ind) in fi_list]
-        return sum(r)/len(r)
-
-    def explain(self, x, explanation, not_ignored = None):
-
-        ix_list = self.select_fn(x)
-
-        for (i,new_x) in ix_list:
-            self.ftrls[i].explain(new_x, explanation, i, not_ignored)
-
-    def update(self, x, y, indices = None):
-        fi_list = self._indices(x) if indices == None else indices
-
-        for (ftrl, new_x, ind) in fi_list:
-            ftrl.update(new_x, y, indices = ind)
-
-
-def norm_pdf (x):
-    return exp(-x * x /2.) / sqrt(2.*pi)
-
-def norm_cdf (x):
-    return 1. - 0.5*erfc(x/(2**0.5))
-
-
-def gaussian_corrections(t):
-    """Returns the additive and multiplicative corrections for the mean
-    and variance of a trunctated Gaussian random variable.
-    In Trueskill/AdPredictor papers, denoted
-    - V(t)
-    - W(t) = V(t) * (V(t) + t)
-    Returns (v(t), w(t))
-    """
-    # Clipping avoids numerical issues from ~0/~0.
-    t = max(-5.0, min(5.0, t))
-    v = norm_pdf(t) / norm_cdf(t)
-    w = v * (v + t)
-    return (v, w)
-
-
-
 class adpredictor(hash_learner):
 
     def __init__(self, mu, sigma2, D, args):
 
-        interactions = args["interactions"]
-        hash_learner.__init__(self, D, interactions)
+        hash_learner.__init__(self, D)
 
         self.mu = mu
         self.sigma2 = sigma2
