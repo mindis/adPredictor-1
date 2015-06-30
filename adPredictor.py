@@ -1,20 +1,5 @@
 __author__ = 'michaelpearmain'
 
-import utils
-import gzip
-import random
-import argparse
-import json
-
-from collections import defaultdict
-from sys import stderr
-from datetime import datetime
-from csv import DictReader
-from math import exp, log, sqrt, erfc, pi
-##############################################################################
-# class, function, generator definitions #####################################
-##############################################################################
-
 class base_learner(object):
     def __init__(self):
         None
