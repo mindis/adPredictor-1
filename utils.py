@@ -1,5 +1,17 @@
 __author__ = 'michaelpearmain'
 
+def logloss(p, y):
+    ''' FUNCTION: Bounded logloss
+        INPUT:
+            p: our prediction
+            y: real answer
+        OUTPUT:
+            logarithmic loss of p given y
+    '''
+
+    p = max(min(p, 1. - 10e-15), 10e-15)
+    return -log(p) if y == 1. else -log(1. - p)
+
 def feature_hash(v, n=32):
     """ Get n-bit hash value
 
